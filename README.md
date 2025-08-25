@@ -89,11 +89,12 @@ http://localhost:5173
 
 ## 📌 Future Improvements
 
-🔹 Rich text editor for blogs
-🔹 User profiles with avatars & bios
-🔹 Blog categories & tags
-🔹 Notifications & subscriptions
-🔹 Mobile app integration
+- 🔹 Rich text editor for blogs
+- 🔹 User profiles with avatars & bios
+- 🔹 Blog categories & tags
+- 🔹 Notifications & subscriptions
+- 🔹 Mobile app integration
+
 
 ---
 
@@ -117,7 +118,7 @@ See [LICENSE](./LICENSE) for more info.
 
 Made with ❤️ by **Muhammad Ahmed**
 
-🔗 [LinkedIn](https://www.linkedin.com/in/muhammad-ahmed-5b7850340/)
-💻 [GitHub](https://github.com/Ahmed291005)
+- 🔗 [LinkedIn](https://www.linkedin.com/in/muhammad-ahmed-5b7850340/)
+- 💻 [GitHub](https://github.com/Ahmed291005)
 
 ---
