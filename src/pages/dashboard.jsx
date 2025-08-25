@@ -1,0 +1,1628 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  Plus,
+  Edit,
+  BarChart3,
+  User,
+  LogOut,
+  Home,
+  FileText,
+  Settings,
+  Heart,
+  MessageCircle,
+  Upload,
+  Eye,
+  Trash2,
+  Save,
+  Search,
+  Globe,
+  RefreshCw,
+  AlertTriangle,
+  Bell,
+  X,
+  Menu
+} from 'lucide-react';
+import { Button } from '../components/ui/button';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from '../components/ui/toast';
+import { config } from '../lib/config';
+
+const Dashboard = () => {
+  const navigate = useNavigate();
+  const { user, logout, loading } = useAuth();
+  const { addToast } = useToast();
+  const [activeTab, setActiveTab] = useState('overview');
+  const [formData, setFormData] = useState({
+    category: '',
+    title: '',
+    description: ''
+  });
+  const [errors, setErrors] = useState({});
+  const [userPosts, setUserPosts] = useState([]);
+  const [postsLoading, setPostsLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [editingPost, setEditingPost] = useState(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [postToDelete, setPostToDelete] = useState(null);
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+  const [deleteAccountPassword, setDeleteAccountPassword] = useState('');
+  const [deleteAccountLoading, setDeleteAccountLoading] = useState(false);
+  const [dashboardStats, setDashboardStats] = useState({
+    totalBlogs: 0,
+    totalLikes: 0,
+    totalComments: 0,
+    totalViews: 0,
+    blogs: []
+  });
+  const [accountForm, setAccountForm] = useState({
+    name: '',
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+    profilePicture: null
+  });
+  const [accountErrors, setAccountErrors] = useState({});
+  const [accountLoading, setAccountLoading] = useState(false);
+  const [accountSuccess, setAccountSuccess] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!loading && !user) {
+      navigate('/login');
+    }
+  }, [user, loading, navigate]);
+
+  // Fetch user's blog posts and dashboard stats
+  useEffect(() => {
+    if (user) {
+      fetchUserPosts();
+      fetchDashboardStats();
+      console.log('User authenticated, fetching dashboard data for user:', user.id);
+    }
+  }, [user]);
+
+  // Refresh posts data when switching to overview or blogs tab
+  useEffect(() => {
+    if (user && (activeTab === 'overview' || activeTab === 'blogs')) {
+      fetchUserPosts();
+      if (activeTab === 'overview') {
+        fetchDashboardStats();
+      }
+    }
+  }, [activeTab, user]);
+
+  // Auto-refresh data every 30 seconds when on overview or blogs tab
+  useEffect(() => {
+    if (user && (activeTab === 'overview' || activeTab === 'blogs')) {
+      const interval = setInterval(() => {
+        fetchUserPosts();
+        if (activeTab === 'overview') {
+          fetchDashboardStats();
+        }
+      }, 30000); // Refresh every 30 seconds
+
+      return () => clearInterval(interval);
+    }
+  }, [activeTab, user]);
+
+  // Fetch notifications when user is available
+  useEffect(() => {
+    if (user) {
+      fetchNotifications();
+      // Set up polling for new notifications every 30 seconds
+      const interval = setInterval(fetchNotifications, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [user]);
+
+  // Fetch notifications
+  const fetchNotifications = async () => {
+    if (!user?.id) return;
+
+    setNotificationsLoading(true);
+    try {
+      const response = await fetch(`${config.API_ENDPOINTS.USER_NOTIFICATIONS}/${user.id}`);
+      const data = await response.json();
+
+      if (data.success) {
+        setNotifications(data.notifications);
+        const unread = data.notifications.filter(n => !n.read).length;
+        setUnreadCount(unread);
+      } else {
+        console.error('Failed to fetch notifications:', data.message);
+      }
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+    } finally {
+      setNotificationsLoading(false);
+    }
+  };
+
+  // Mark notification as read
+  const markNotificationAsRead = async (userNotificationId) => {
+    try {
+      const response = await fetch(`${config.API_ENDPOINTS.USER_READ_NOTIFICATION}/${userNotificationId}/read`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId: user.id })
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        // Update local state
+        setNotifications(prev =>
+          prev.map(n =>
+            n.id === userNotificationId ? { ...n, read: true } : n
+          )
+        );
+        setUnreadCount(prev => Math.max(0, prev - 1));
+      }
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+    }
+  };
+
+  const fetchUserPosts = async (showToast = false) => {
+    if (!user?.id) return;
+
+    setPostsLoading(true);
+    try {
+      console.log('Fetching user posts for user ID:', user.id);
+      const response = await fetch(`${config.API_ENDPOINTS.BLOG_POSTS}?authorId=${user.id}`);
+      const data = await response.json();
+
+      if (data.success) {
+        console.log('User posts fetched successfully:', data.posts);
+        setUserPosts(data.posts);
+        if (showToast) {
+          addToast('Data refreshed successfully!', 'success');
+        }
+      } else {
+        console.error('Failed to fetch posts:', data.message);
+        if (showToast) {
+          addToast('Failed to refresh data', 'error');
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching posts:', error);
+      if (showToast) {
+        addToast('Network error while refreshing data', 'error');
+      }
+    } finally {
+      setPostsLoading(false);
+    }
+  };
+
+  const fetchDashboardStats = async () => {
+    if (!user?.id) {
+      console.log('No user ID available, skipping dashboard stats fetch');
+      return;
+    }
+
+    try {
+      console.log('Fetching dashboard stats for user:', user.id);
+
+      // Use the correct API endpoint format with query parameters
+      const apiUrl = `${config.API_ENDPOINTS.USER_DASHBOARD}?userId=${user.id}`;
+      console.log('Dashboard API URL:', apiUrl);
+
+      // Add a timestamp to prevent caching
+      const fetchOptions = {
+        method: 'GET',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+          'Accept': 'application/json'
+        },
+        // Add a cache-busting query parameter
+        cache: 'no-store'
+      };
+
+      console.log('Sending fetch request with options:', fetchOptions);
+      // Use proper URL format with cache-busting parameter
+      const cacheBuster = Date.now();
+      const finalUrl = apiUrl.includes('?') ? `${apiUrl}&_=${cacheBuster}` : `${apiUrl}?_=${cacheBuster}`;
+      console.log('Final URL with cache buster:', finalUrl);
+
+      const response = await fetch(finalUrl, fetchOptions);
+      console.log('Dashboard API response status:', response.status);
+
+      // Check if response is OK before parsing JSON
+      if (!response.ok) {
+        // Try to get error details from response
+        try {
+          const errorResponse = await response.json();
+          console.error('API error response:', errorResponse);
+          throw new Error(errorResponse.message || `API responded with status: ${response.status}`);
+        } catch (jsonError) {
+          // If we can't parse JSON, try to get text
+          try {
+            const textResponse = await response.text();
+            console.error('API error text response:', textResponse.substring(0, 200));
+            throw new Error(`API error (${response.status}): ${textResponse.substring(0, 100)}...`);
+          } catch (textError) {
+            // If all else fails, throw generic error
+            throw new Error(`API responded with status: ${response.status}`);
+          }
+        }
+      }
+
+      const contentType = response.headers.get('content-type');
+      console.log('Response content type:', contentType);
+
+      if (!contentType || !contentType.includes('application/json')) {
+        // Try to get the text response for debugging
+        const textResponse = await response.text();
+        console.error('Non-JSON response received:', textResponse.substring(0, 200));
+
+        // Check if this is an HTML error page (common with Vercel 500 errors)
+        if (textResponse.includes('<!doctype html>') || textResponse.includes('<html>')) {
+          console.error('Received HTML error page instead of JSON response');
+          // Set default stats and continue instead of throwing
+          setDashboardStats({
+            totalBlogs: 0,
+            totalLikes: 0,
+            totalComments: 0,
+            totalViews: 0,
+            blogs: []
+          });
+          return; // Exit the function early
+        }
+
+        throw new Error(`Expected JSON response but got ${contentType || 'unknown content type'}`);
+      }
+
+      // Parse the JSON from the original response
+      const data = await response.clone().json();
+
+      console.log('Dashboard API response data:', data);
+
+      if (data.success) {
+        console.log('Dashboard stats fetched successfully:', data.stats);
+        if (data.stats) {
+          // Ensure we're parsing numbers correctly
+          const totalBlogs = parseInt(data.stats.totalBlogs || data.stats.posts || 0);
+          const totalLikes = parseInt(data.stats.totalLikes || 0);
+          const totalComments = parseInt(data.stats.totalComments || 0);
+          const totalViews = parseInt(data.stats.totalViews || 0);
+
+          console.log('Parsed stats values:', { totalBlogs, totalLikes, totalComments, totalViews });
+
+          // Only update state if we have valid numbers
+          if (!isNaN(totalBlogs) || !isNaN(totalLikes) || !isNaN(totalComments) || !isNaN(totalViews)) {
+            setDashboardStats({
+              totalBlogs: isNaN(totalBlogs) ? 0 : totalBlogs,
+              totalLikes: isNaN(totalLikes) ? 0 : totalLikes,
+              totalComments: isNaN(totalComments) ? 0 : totalComments,
+              totalViews: isNaN(totalViews) ? 0 : totalViews,
+              blogs: data.stats.blogs || []
+            });
+          } else {
+            console.warn('Invalid stats data received, using default values');
+            setDashboardStats({
+              totalBlogs: 0,
+              totalLikes: 0,
+              totalComments: 0,
+              totalViews: 0,
+              blogs: []
+            });
+          }
+
+          // Show success toast
+          addToast('Dashboard stats updated successfully', 'success');
+        } else {
+          console.error('Stats data is missing in the API response');
+          // Set default values if stats are missing
+          setDashboardStats({
+            totalBlogs: 0,
+            totalLikes: 0,
+            totalComments: 0,
+            totalViews: 0,
+            blogs: []
+          });
+
+          // Show warning toast
+          addToast('Stats data is missing. Please try again later.', 'warning');
+        }
+      } else {
+        console.error('Failed to fetch dashboard stats:', data.message);
+        // Set default values on error
+        setDashboardStats({
+          totalBlogs: 0,
+          totalLikes: 0,
+          totalComments: 0,
+          totalViews: 0,
+          blogs: []
+        });
+
+        // Show error toast
+        addToast(`Failed to load stats: ${data.message}`, 'error');
+      }
+    } catch (error) {
+      console.error('Error fetching dashboard stats:', error);
+      // Set default values on error
+      setDashboardStats({
+        totalBlogs: 0,
+        totalLikes: 0,
+        totalComments: 0,
+        totalViews: 0,
+        blogs: []
+      });
+
+      // Show error toast to user
+      addToast(`Failed to load dashboard stats: ${error.message}`, 'error');
+    }
+  };
+
+  const createBlogPost = async (postData) => {
+    setSubmitting(true);
+    try {
+      const response = await fetch(config.API_ENDPOINTS.BLOG_POSTS, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: postData.title,
+          description: postData.description,
+          category: postData.category,
+          authorId: user.id,
+          authorName: user.name
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Refresh user posts and dashboard stats
+        await fetchUserPosts();
+        await fetchDashboardStats();
+        return { success: true, message: 'Blog post created successfully!' };
+      } else {
+        return { success: false, message: data.message || 'Failed to create blog post' };
+      }
+    } catch (error) {
+      console.error('Error creating blog post:', error);
+      return { success: false, message: 'Network error. Please try again.' };
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const updateBlogPost = async (postId, postData) => {
+    setSubmitting(true);
+    try {
+      console.log('Updating blog post:', { postId, postData });
+      console.log('API endpoint:', `${config.API_ENDPOINTS.BLOG_POSTS}/${postId}`);
+      
+      // Ensure postId is a valid number
+      const numericPostId = parseInt(postId);
+      if (isNaN(numericPostId)) {
+        console.error('Invalid post ID:', postId);
+        return { success: false, message: 'Invalid blog post ID' };
+      }
+      
+      const response = await fetch(`${config.API_ENDPOINTS.BLOG_POSTS}/${numericPostId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: postData.title,
+          description: postData.description,
+          category: postData.category,
+        }),
+      });
+
+      console.log('Update response status:', response.status);
+      
+      // Check if response is ok before parsing JSON
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Update failed with status:', response.status, 'Response:', errorText);
+        return { success: false, message: `Server error: ${response.status}` };
+      }
+      
+      const data = await response.json();
+      console.log('Update response data:', data);
+
+      if (data.success) {
+        await fetchUserPosts();
+        await fetchDashboardStats();
+        return { success: true, message: 'Blog post updated successfully!' };
+      } else {
+        console.error('Update failed with error:', data.message);
+        return { success: false, message: data.message || 'Failed to update blog post' };
+      }
+    } catch (error) {
+      console.error('Error updating blog post:', error);
+      return { success: false, message: 'Network error. Please try again.' };
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const deleteBlogPost = async (postId) => {
+    try {
+      console.log('Deleting blog post:', postId);
+      console.log('API endpoint:', `${config.API_ENDPOINTS.BLOG_POSTS}/${postId}`);
+      
+      // Ensure postId is a valid number
+      const numericPostId = parseInt(postId);
+      if (isNaN(numericPostId)) {
+        console.error('Invalid post ID:', postId);
+        return { success: false, message: 'Invalid blog post ID' };
+      }
+      
+      const response = await fetch(`${config.API_ENDPOINTS.BLOG_POSTS}/${numericPostId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      console.log('Delete response status:', response.status);
+      
+      // Check if response is ok before parsing JSON
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Delete failed with status:', response.status, 'Response:', errorText);
+        return { success: false, message: `Server error: ${response.status}` };
+      }
+      
+      const data = await response.json();
+      console.log('Delete response data:', data);
+
+      if (data.success) {
+        await fetchUserPosts();
+        await fetchDashboardStats();
+        return { success: true, message: 'Blog post deleted successfully!' };
+      } else {
+        console.error('Delete failed with error:', data.message);
+        return { success: false, message: data.message || 'Failed to delete blog post' };
+      }
+    } catch (error) {
+      console.error('Error deleting blog post:', error);
+      return { success: false, message: 'Network error. Please try again.' };
+    }
+  };
+
+  const deleteAccount = async (password) => {
+    setDeleteAccountLoading(true);
+    try {
+      console.log('Attempting to delete account for user:', user.id);
+      console.log('API endpoint:', config.API_ENDPOINTS.USER_DELETE_ACCOUNT);
+
+      const response = await fetch(config.API_ENDPOINTS.USER_DELETE_ACCOUNT, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          password: password
+        }),
+      });
+
+      console.log('Response status:', response.status);
+      const data = await response.json();
+      console.log('Response data:', data);
+
+      if (data.success) {
+        logout();
+        navigate('/login');
+        addToast('Account deleted successfully', 'success');
+        return { success: true, message: 'Account deleted successfully!' };
+      } else {
+        return { success: false, message: data.message || 'Failed to delete account' };
+      }
+    } catch (error) {
+      console.error('Error deleting account:', error);
+      return { success: false, message: 'Network error. Please try again.' };
+    } finally {
+      setDeleteAccountLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
+  const handleFormChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+    // Clear error when user starts typing
+    if (errors[name]) {
+      setErrors(prev => ({
+        ...prev,
+        [name]: ''
+      }));
+    }
+  };
+
+  const validateForm = () => {
+    const newErrors = {};
+    if (!formData.category) newErrors.category = 'Please select a category';
+    if (!formData.title.trim()) newErrors.title = 'Please enter a title';
+    if (!formData.description.trim()) newErrors.description = 'Please enter a description';
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (validateForm()) {
+      let result;
+
+      if (editingPost) {
+        console.log('Submitting edit for post:', editingPost);
+        console.log('Form data:', formData);
+        result = await updateBlogPost(editingPost.id, formData);
+        console.log('Edit result:', result);
+      } else {
+        console.log('Creating new blog post with data:', formData);
+        result = await createBlogPost(formData);
+        console.log('Create result:', result);
+      }
+
+      if (result.success) {
+        // Reset form
+        setFormData({ category: '', title: '', description: '' });
+        setErrors({});
+        setEditingPost(null);
+        // Switch to blogs tab to show the new/updated post
+        setActiveTab('blogs');
+        // Show modern toast notification
+        addToast(result.message, 'success');
+      } else {
+        addToast(result.message, 'error');
+      }
+    }
+  };
+
+  const handleEdit = (post) => {
+    console.log('Edit button clicked for post:', post);
+    setEditingPost(post);
+    setFormData({
+      category: post.category,
+      title: post.title,
+      description: post.description
+    });
+    setActiveTab('create');
+  };
+
+  const handleDelete = (post) => {
+    console.log('Delete button clicked for post:', post);
+    setPostToDelete(post);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async () => {
+    if (postToDelete) {
+      console.log('Confirming delete for post:', postToDelete);
+      const result = await deleteBlogPost(postToDelete.id);
+      console.log('Delete result:', result);
+      if (result.success) {
+        addToast(result.message, 'success');
+      } else {
+        addToast(result.message, 'error');
+      }
+    }
+    setShowDeleteConfirm(false);
+    setPostToDelete(null);
+  };
+
+  const cancelEdit = () => {
+    setEditingPost(null);
+    setFormData({ category: '', title: '', description: '' });
+    setErrors({});
+    setActiveTab('blogs');
+  };
+
+  const handleDeleteAccount = async (e) => {
+    e.preventDefault();
+    if (!deleteAccountPassword.trim()) {
+      addToast('Please enter your password', 'error');
+      return;
+    }
+
+    const result = await deleteAccount(deleteAccountPassword);
+    if (!result.success) {
+      addToast(result.message, 'error');
+    }
+  };
+
+  const handleAccountFormChange = (e) => {
+    const { name, value, files } = e.target;
+
+    if (name === 'profilePicture' && files) {
+      setAccountForm(prev => ({
+        ...prev,
+        profilePicture: files[0]
+      }));
+    } else {
+      setAccountForm(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    }
+
+    // Clear errors when user starts typing
+    if (accountErrors[name]) {
+      setAccountErrors(prev => ({
+        ...prev,
+        [name]: ''
+      }));
+    }
+  };
+
+  const validateAccountForm = () => {
+    const errors = {};
+
+    // Name validation
+    if (!accountForm.name.trim()) {
+      errors.name = 'Name is required';
+    } else if (accountForm.name.trim().length < 2) {
+      errors.name = 'Name must be at least 2 characters';
+    }
+
+    // Current password validation (only if changing password)
+    if (accountForm.newPassword || accountForm.confirmPassword) {
+      if (!accountForm.currentPassword) {
+        errors.currentPassword = 'Current password is required to change password';
+      }
+    }
+
+    // New password validation
+    if (accountForm.newPassword) {
+      if (accountForm.newPassword.length < 6) {
+        errors.newPassword = 'Password must be at least 6 characters';
+      } else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(accountForm.newPassword)) {
+        errors.newPassword = 'Password must contain uppercase, lowercase, and number';
+      }
+    }
+
+    // Confirm password validation
+    if (accountForm.newPassword && accountForm.newPassword !== accountForm.confirmPassword) {
+      errors.confirmPassword = 'Passwords do not match';
+    }
+
+    // Profile picture validation
+    if (accountForm.profilePicture) {
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      if (accountForm.profilePicture.size > maxSize) {
+        errors.profilePicture = 'Image size must be less than 5MB';
+      }
+
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
+      if (!allowedTypes.includes(accountForm.profilePicture.type)) {
+        errors.profilePicture = 'Only JPEG, PNG, and GIF images are allowed';
+      }
+    }
+
+    setAccountErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleAccountSubmit = async (e) => {
+    e.preventDefault();
+
+    if (!validateAccountForm()) {
+      return;
+    }
+
+    setAccountLoading(true);
+    setAccountSuccess(false);
+
+    try {
+      const formData = new FormData();
+      formData.append('name', accountForm.name);
+      formData.append('currentPassword', accountForm.currentPassword);
+      formData.append('newPassword', accountForm.newPassword);
+      if (accountForm.profilePicture) {
+        formData.append('profilePicture', accountForm.profilePicture);
+      }
+
+      const response = await fetch(`${config.API_ENDPOINTS.USER_UPDATE}/${user.id}/update`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: formData
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setAccountSuccess(true);
+        // Update user context with new data
+        // You might need to update your AuthContext to handle this
+        setAccountForm({
+          name: data.user.name,
+          currentPassword: '',
+          newPassword: '',
+          confirmPassword: '',
+          profilePicture: null
+        });
+
+        // Show success message
+        setTimeout(() => {
+          setAccountSuccess(false);
+        }, 3000);
+      } else {
+        if (data.error === 'Invalid current password') {
+          setAccountErrors({ currentPassword: 'Current password is incorrect' });
+        } else {
+          setAccountErrors({ general: data.error || 'Failed to update account' });
+        }
+      }
+    } catch (error) {
+      console.error('Error updating account:', error);
+      setAccountErrors({ general: 'Failed to update account. Please try again.' });
+    } finally {
+      setAccountLoading(false);
+    }
+  };
+
+  const sidebarItems = [
+    { id: 'overview', label: 'Overview', icon: Home },
+    { id: 'blogs', label: 'My Blogs', icon: FileText },
+    { id: 'create', label: 'Create New Blog', icon: Plus },
+    { id: 'explore', label: 'Explore All Blogs', icon: Globe },
+    { id: 'account', label: 'Manage Account', icon: Settings }
+  ];
+
+  const categories = [
+    'Technology', 'Programming', 'Design', 'Personal Growth',
+    'Travel', 'Tutorials', 'News & Trends', 'Productivity',
+    'AI & Machine Learning', 'Others'
+  ];
+
+  // Update accountForm when user is available
+  useEffect(() => {
+    if (user) {
+      setAccountForm(prev => ({
+        ...prev,
+        name: user.name || ''
+      }));
+    }
+  }, [user]);
+
+  if (loading || !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-600"></div>
+      </div>
+    );
+  }
+
+  const renderOverview = () => {
+    return (
+      <div className="space-y-4 sm:space-y-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-2 sm:space-y-0">
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Overview</h2>
+          <Button
+            onClick={async () => {
+              await fetchUserPosts(true);
+              await fetchDashboardStats();
+            }}
+            variant="outline"
+            size="sm"
+            className="flex items-center space-x-2"
+            disabled={postsLoading}
+          >
+            <RefreshCw className={`h-4 w-4 ${postsLoading ? 'animate-spin' : ''}`} />
+            <span>Refresh</span>
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6 hover:shadow-md transition-shadow">
+            <div className="flex items-center">
+              <div className="p-2 sm:p-3 bg-gray-100 rounded-lg">
+                <FileText className="h-5 w-5 sm:h-6 sm:w-6 text-gray-600" />
+              </div>
+              <div className="ml-3 sm:ml-4">
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Your Posts</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900">{dashboardStats.totalBlogs}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6 hover:shadow-md transition-shadow">
+            <div className="flex items-center">
+              <div className="p-2 sm:p-3 bg-green-100 rounded-lg">
+                <Heart className="h-5 w-5 sm:h-6 sm:w-6 text-green-600" />
+              </div>
+              <div className="ml-3 sm:ml-4">
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Total Likes</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900">{dashboardStats.totalLikes}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6 hover:shadow-md transition-shadow">
+            <div className="flex items-center">
+              <div className="p-2 sm:p-3 bg-gray-100 rounded-lg">
+                <MessageCircle className="h-5 w-5 sm:h-6 sm:w-6 text-gray-600" />
+              </div>
+              <div className="ml-3 sm:ml-4">
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Total Comments</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900">{dashboardStats.totalComments}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6 hover:shadow-md transition-shadow">
+            <div className="flex items-center">
+              <div className="p-2 sm:p-3 bg-orange-100 rounded-lg">
+                <Eye className="h-5 w-5 sm:h-6 sm:w-6 text-orange-600" />
+              </div>
+              <div className="ml-3 sm:ml-4">
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Total Views</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900">{(dashboardStats.totalViews || 0).toLocaleString()}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6 hover:shadow-md transition-shadow">
+            <div className="flex items-center">
+              <div className="p-2 sm:p-3 bg-indigo-100 rounded-lg">
+                <Globe className="h-5 w-5 sm:h-6 sm:w-6 text-indigo-600" />
+              </div>
+              <div className="ml-3 sm:ml-4">
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Your Blogs</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900">{dashboardStats.totalBlogs}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+          <div className="p-4 sm:p-6 border-b border-gray-100">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Recent Activity</h2>
+          </div>
+          <div className="p-4 sm:p-6">
+            <div className="space-y-3 sm:space-y-4">
+              {(dashboardStats.blogs || []).slice(0, 3).map((blog) => (
+                <div key={blog.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 sm:p-4 bg-gray-50 rounded-lg space-y-2 sm:space-y-0">
+                  <div className="flex-1">
+                    <h3 className="font-medium text-gray-900 text-sm sm:text-base">{blog.title}</h3>
+                    <p className="text-xs sm:text-sm text-gray-600">{new Date(blog.created_at).toLocaleDateString()}</p>
+                  </div>
+                  <div className="flex items-center space-x-3 sm:space-x-4 text-xs sm:text-sm text-gray-600">
+                    <span className="flex items-center">
+                      <Eye className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                      {blog.views || 0}
+                    </span>
+                    <span className="flex items-center">
+                      <Heart className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                      {blog.likes || 0}
+                    </span>
+                    <span className="flex items-center">
+                      <MessageCircle className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                      {blog.comments || 0}
+                    </span>
+                  </div>
+                </div>
+              ))}
+              {(dashboardStats.blogs || []).length === 0 && (
+                <div className="text-center py-6 sm:py-8 text-gray-500">
+                  <FileText className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-3 sm:mb-4 text-gray-300" />
+                  <p className="text-sm sm:text-base">No blogs yet. Create your first blog to see activity here!</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderBlogs = () => (
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-3 sm:space-y-0">
+        <h2 className="text-xl sm:text-2xl font-bold text-gray-900">All Your Posts</h2>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center space-y-2 sm:space-y-0 sm:space-x-3">
+          <Button
+            onClick={async () => {
+              await fetchUserPosts(true);
+              await fetchDashboardStats();
+            }}
+            variant="outline"
+            size="sm"
+            className="flex items-center justify-center space-x-2"
+            disabled={postsLoading}
+          >
+            <RefreshCw className={`h-4 w-4 ${postsLoading ? 'animate-spin' : ''}`} />
+            <span>Refresh</span>
+          </Button>
+          <Button onClick={() => setActiveTab('create')} className="bg-gray-600 hover:bg-gray-700">
+            <Plus className="h-4 w-4 mr-2" />
+            Create New Post
+          </Button>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+        <div className="p-4 sm:p-6">
+          {userPosts.length === 0 ? (
+            <div className="text-center py-8 sm:py-12">
+              <FileText className="h-10 w-10 sm:h-12 sm:w-12 text-gray-400 mx-auto mb-3 sm:mb-4" />
+              <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-2">No blogs posted yet!</h3>
+              <p className="text-sm sm:text-base text-gray-600 mb-4">Start writing your first blog post and share your thoughts with the world!</p>
+              <Button onClick={() => setActiveTab('create')} className="bg-gray-600 hover:bg-gray-700">
+                <Plus className="h-4 w-4 mr-2" />
+                Create Your First Post
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3 sm:space-y-4">
+              {userPosts.map((post) => (
+                <div key={post.id} className="border border-gray-200 rounded-lg p-4 sm:p-6 hover:shadow-md transition-shadow">
+                  <div className="flex flex-col sm:flex-row justify-between items-start space-y-3 sm:space-y-0">
+                    <div className="flex-1">
+                      <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2">{post.title}</h3>
+                      <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm text-gray-600 mb-3">
+                        <span className="bg-gray-100 text-gray-800 px-2 py-1 rounded-full text-xs">
+                          {post.category}
+                        </span>
+                        <span>{new Date(post.created_at).toLocaleDateString()}</span>
+                        <span className="flex items-center">
+                          <Eye className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                          {parseInt(post.stats?.views) || 0} views
+                        </span>
+                        <span className="flex items-center">
+                          <Heart className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                          {parseInt(post.stats?.likes) || 0} likes
+                        </span>
+                        <span className="flex items-center">
+                          <MessageCircle className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                          {parseInt(post.stats?.comments) || 0} comments
+                        </span>
+                      </div>
+                      <p className="text-gray-600 text-xs sm:text-sm line-clamp-2">
+                        {post.description.substring(0, 150)}...
+                      </p>
+                    </div>
+                    <div className="flex items-center space-x-2 self-end sm:self-start">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEdit(post)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-red-600 hover:bg-red-50"
+                        onClick={() => handleDelete(post)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderCreatePost = () => (
+    <div className="max-w-4xl mx-auto">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
+        <h2 className="text-2xl font-bold text-gray-900 mb-6">
+          {editingPost ? 'Edit Blog Post' : 'Create a New Blog Post'}
+        </h2>
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Category Dropdown */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Select Category
+            </label>
+            <select
+              name="category"
+              value={formData.category}
+              onChange={handleFormChange}
+              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition-colors ${errors.category ? 'border-red-500' : 'border-gray-300'
+                }`}
+            >
+              <option value="" disabled>Choose a category</option>
+              {categories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
+            {errors.category && (
+              <p className="mt-1 text-sm text-red-600">{errors.category}</p>
+            )}
+          </div>
+
+          {/* Title Input */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Post Title
+            </label>
+            <input
+              type="text"
+              name="title"
+              value={formData.title}
+              onChange={handleFormChange}
+              placeholder="Enter your blog title"
+              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition-colors ${errors.title ? 'border-red-500' : 'border-gray-300'
+                }`}
+            />
+            {errors.title && (
+              <p className="mt-1 text-sm text-red-600">{errors.title}</p>
+            )}
+          </div>
+
+          {/* Description Textarea */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Description
+            </label>
+            <textarea
+              name="description"
+              value={formData.description}
+              onChange={handleFormChange}
+              placeholder="Write your blog here..."
+              rows={12}
+              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition-colors resize-none ${errors.description ? 'border-red-500' : 'border-gray-300'
+                }`}
+            />
+            {errors.description && (
+              <p className="mt-1 text-sm text-red-600">{errors.description}</p>
+            )}
+          </div>
+
+          {/* Submit Button */}
+          <div className="flex justify-end space-x-4 pt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={editingPost ? cancelEdit : () => setActiveTab('overview')}
+              className="px-6"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              className="bg-gray-600 hover:bg-gray-700 px-6"
+              disabled={submitting}
+            >
+              {submitting ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  {editingPost ? 'Updating...' : 'Posting...'}
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  {editingPost ? 'Update' : 'Post'}
+                </>
+              )}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+
+  const renderExplore = () => {
+    // Navigate to explore page
+    navigate('/explore');
+    return null;
+  };
+
+  const renderManageAccount = () => (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+      <h2 className="text-2xl font-bold text-gray-900 mb-6">Manage Account</h2>
+
+      {/* Success Message */}
+      {accountSuccess && (
+        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm font-medium text-green-800">
+                Account updated successfully!
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Error Message */}
+      {accountErrors.general && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm font-medium text-red-800">
+                {accountErrors.general}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <form onSubmit={handleAccountSubmit} className="space-y-6">
+        {/* Profile Picture */}
+        <div className="text-center">
+          <div className="relative inline-block">
+            <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4 overflow-hidden">
+              {accountForm.profilePicture ? (
+                <img
+                  src={URL.createObjectURL(accountForm.profilePicture)}
+                  alt="Profile preview"
+                  className="w-full h-full object-cover"
+                />
+              ) : user?.profilePicture ? (
+                <img
+                  src={user.profilePicture}
+                  alt="Profile"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <User className="h-12 w-12 text-gray-400" />
+              )}
+            </div>
+            <label className="absolute bottom-0 right-0 bg-white border-2 border-white rounded-full p-1 cursor-pointer hover:bg-gray-50 transition-colors">
+              <Upload className="h-4 w-4" />
+              <input
+                type="file"
+                name="profilePicture"
+                accept="image/*"
+                onChange={handleAccountFormChange}
+                className="hidden"
+              />
+            </label>
+          </div>
+          <p className="text-sm text-gray-600">Click to upload profile picture</p>
+          {accountErrors.profilePicture && (
+            <p className="text-sm text-red-600 mt-1">{accountErrors.profilePicture}</p>
+          )}
+        </div>
+
+        {/* Name Update */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Full Name
+          </label>
+          <input
+            type="text"
+            name="name"
+            value={accountForm.name}
+            onChange={handleAccountFormChange}
+            className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition-colors ${accountErrors.name ? 'border-red-300' : 'border-gray-300'
+              }`}
+          />
+          {accountErrors.name && (
+            <p className="text-sm text-red-600 mt-1">{accountErrors.name}</p>
+          )}
+        </div>
+
+        {/* Email Display */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Email Address
+          </label>
+          <input
+            type="email"
+            value={user.email}
+            disabled
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-600"
+          />
+        </div>
+
+        {/* Current Password */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Current Password
+          </label>
+          <input
+            type="password"
+            name="currentPassword"
+            value={accountForm.currentPassword}
+            onChange={handleAccountFormChange}
+            placeholder="Enter current password to make changes"
+            className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition-colors ${accountErrors.currentPassword ? 'border-red-300' : 'border-gray-300'
+              }`}
+          />
+          {accountErrors.currentPassword && (
+            <p className="text-sm text-red-600 mt-1">{accountErrors.currentPassword}</p>
+          )}
+        </div>
+
+        {/* New Password */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            New Password
+          </label>
+          <input
+            type="password"
+            name="newPassword"
+            value={accountForm.newPassword}
+            onChange={handleAccountFormChange}
+            placeholder="Enter new password (optional)"
+            className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition-colors ${accountErrors.newPassword ? 'border-red-300' : 'border-gray-300'
+              }`}
+          />
+          {accountErrors.newPassword && (
+            <p className="text-sm text-red-600 mt-1">{accountErrors.newPassword}</p>
+          )}
+        </div>
+
+        {/* Confirm New Password */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Confirm New Password
+          </label>
+          <input
+            type="password"
+            name="confirmPassword"
+            value={accountForm.confirmPassword}
+            onChange={handleAccountFormChange}
+            placeholder="Confirm new password"
+            className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition-colors ${accountErrors.confirmPassword ? 'border-red-300' : 'border-gray-300'
+              }`}
+          />
+          {accountErrors.confirmPassword && (
+            <p className="text-sm text-red-600 mt-1">{accountErrors.confirmPassword}</p>
+          )}
+        </div>
+
+        {/* Save Button */}
+        <div className="pt-4">
+          <Button
+            type="submit"
+            className="w-full bg-gray-600 hover:bg-gray-700 disabled:opacity-50"
+            disabled={accountLoading}
+          >
+            {accountLoading ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4 mr-2" />
+                Save Changes
+              </>
+            )}
+          </Button>
+        </div>
+      </form>
+
+      {/* Delete Account Section */}
+      <div className="border-t border-gray-200 pt-6 mt-8">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex items-center space-x-3 mb-3">
+            <AlertTriangle className="h-5 w-5 text-red-600" />
+            <h3 className="text-lg font-semibold text-red-900">Danger Zone</h3>
+          </div>
+          <p className="text-red-700 text-sm mb-4">
+            Once you delete your account, there is no going back. Please be certain.
+          </p>
+          <Button
+            onClick={() => setShowDeleteAccountModal(true)}
+            className="bg-red-600 hover:bg-red-700 text-white"
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            Delete Account
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'overview':
+        return renderOverview();
+      case 'blogs':
+        return renderBlogs();
+      case 'create':
+        return renderCreatePost();
+      case 'explore':
+        return renderExplore();
+      case 'account':
+        return renderManageAccount();
+      default:
+        return renderOverview();
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="flex justify-between items-center px-4 sm:px-6 py-4">
+          <div className="flex items-center space-x-4">
+            {/* Mobile Menu Button */}
+            <button
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="lg:hidden p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <Menu className="h-6 w-6" />
+            </button>
+
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Dashboard</h1>
+              <p className="text-sm sm:text-base text-gray-600">Welcome back, {user.name}!</p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2 sm:space-x-4">
+            {/* Notification Icon */}
+            <div className="relative">
+              <button
+                onClick={() => setShowNotifications(!showNotifications)}
+                className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <Bell className="h-5 w-5 sm:h-6 sm:w-6" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-medium">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Notification Dropdown */}
+              {showNotifications && (
+                <div className="absolute right-0 mt-2 w-72 sm:w-80 bg-white rounded-xl shadow-xl border border-gray-200 z-50 max-h-96 overflow-y-auto">
+                  <div className="p-4 border-b border-gray-100">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold text-gray-900">Notifications</h3>
+                      <button
+                        onClick={() => setShowNotifications(false)}
+                        className="text-gray-400 hover:text-gray-600"
+                      >
+                        <X className="h-5 w-5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="p-2">
+                    {notificationsLoading ? (
+                      <div className="flex items-center justify-center py-8">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-600"></div>
+                      </div>
+                    ) : notifications.length > 0 ? (
+                      notifications.map((notification) => (
+                        <div
+                          key={notification.id}
+                          className={`p-3 rounded-lg mb-2 cursor-pointer transition-colors ${notification.read
+                            ? 'bg-gray-50 hover:bg-gray-100'
+                            : 'bg-gray-50 hover:bg-gray-100'
+                            }`}
+                          onClick={() => {
+                            if (!notification.read) {
+                              markNotificationAsRead(notification.id);
+                            }
+                          }}
+                        >
+                          <div className="flex items-start space-x-3">
+                            <div className={`w-2 h-2 rounded-full mt-2 ${notification.read ? 'bg-gray-400' : 'bg-gray-500'
+                              }`}></div>
+                            <div className="flex-1">
+                              <h4 className="font-medium text-gray-900 text-sm">
+                                {notification.title}
+                              </h4>
+                              <p className="text-gray-600 text-xs mt-1">
+                                {notification.description}
+                              </p>
+                              <p className="text-gray-400 text-xs mt-2">
+                                {new Date(notification.created_at).toLocaleDateString()}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-8 text-gray-500">
+                        <Bell className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                        <p className="text-sm">No notifications yet</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* User Info - Hidden on mobile */}
+            <div className="hidden sm:flex items-center space-x-2 bg-gray-100 px-4 py-2 rounded-lg">
+              <User className="h-5 w-5 text-gray-600" />
+              <span className="text-sm font-medium text-gray-700">{user.email}</span>
+            </div>
+
+            <Button
+              onClick={handleLogout}
+              variant="outline"
+              size="sm"
+              className="text-red-600 border-red-600 hover:bg-red-600 hover:text-white"
+            >
+              <LogOut className="h-4 w-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">Logout</span>
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex">
+        {/* Mobile Menu Overlay */}
+        {isMobileMenuOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden" onClick={() => setIsMobileMenuOpen(false)} />
+        )}
+
+        {/* Sidebar - Hidden on mobile, visible on desktop */}
+        <div className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+          } lg:translate-x-0`}>
+          <div className="flex items-center justify-between p-4 border-b border-gray-200 lg:hidden">
+            <h2 className="text-lg font-semibold text-gray-900">Menu</h2>
+            <button
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <X className="h-6 w-6" />
+            </button>
+          </div>
+
+          <nav className="p-4">
+            <ul className="space-y-2">
+              {sidebarItems.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <li key={item.id}>
+                    <button
+                      onClick={() => {
+                        setActiveTab(item.id);
+                        setIsMobileMenuOpen(false);
+                      }}
+                      className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-colors ${activeTab === item.id
+                        ? 'bg-gray-100 text-gray-700 border-r-2 border-gray-600'
+                        : 'text-gray-700 hover:bg-gray-100'
+                        }`}
+                    >
+                      <Icon className="h-5 w-5" />
+                      <span className="font-medium">{item.label}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
+        </div>
+
+        {/* Main Content */}
+        <div className="flex-1 p-4 sm:p-6 lg:p-8">
+          {renderContent()}
+        </div>
+      </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="p-2 bg-red-100 rounded-lg">
+                <Trash2 className="h-6 w-6 text-red-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">Confirm Delete</h3>
+            </div>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to delete "{postToDelete?.title}"? This action cannot be undone and the post will be permanently removed.
+            </p>
+            <div className="flex justify-end space-x-3">
+              <Button
+                variant="outline"
+                onClick={() => setShowDeleteConfirm(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="bg-red-600 hover:bg-red-700"
+                onClick={confirmDelete}
+              >
+                Delete Post
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Account Modal */}
+      {showDeleteAccountModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="p-2 bg-red-100 rounded-lg">
+                <AlertTriangle className="h-6 w-6 text-red-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">Delete Account</h3>
+            </div>
+            <p className="text-gray-600 mb-6">
+              This action cannot be undone. This will permanently delete your account and remove all your data from our servers.
+            </p>
+            <form onSubmit={handleDeleteAccount} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Enter your password to confirm
+                </label>
+                <input
+                  type="password"
+                  value={deleteAccountPassword}
+                  onChange={(e) => setDeleteAccountPassword(e.target.value)}
+                  placeholder="Enter your password"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-colors"
+                  required
+                />
+              </div>
+              <div className="flex justify-end space-x-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setShowDeleteAccountModal(false);
+                    setDeleteAccountPassword('');
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="bg-red-600 hover:bg-red-700"
+                  disabled={deleteAccountLoading}
+                >
+                  {deleteAccountLoading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete Account
+                    </>
+                  )}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Dashboard;
