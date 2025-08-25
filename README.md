@@ -33,7 +33,7 @@ Built with **React + Vite**, styled with **Tailwind CSS**, and powered by **Verc
 
 ## 📸 Screenshot
 
-![Main Page](blog 1.png)
+![Main Page](blog.png)
 
 ---
 
