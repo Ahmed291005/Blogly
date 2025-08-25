@@ -1,4 +1,4 @@
-# BlogHive - Full-Stack Blog Platform
+# Blogly - Full-Stack Blog Platform
 
 A modern blog platform built with React, Vite, and Vercel serverless functions.
 
@@ -14,7 +14,7 @@ A modern blog platform built with React, Vite, and Vercel serverless functions.
 ## 📁 Project Structure
 
 ```
-BlogHive/
+Blogly/
 ├── api/                    # Vercel serverless API
 │   ├── auth.js            # Authentication endpoints
 │   ├── blogs.js           # Blog posts CRUD & interactions
