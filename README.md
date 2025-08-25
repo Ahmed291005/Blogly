@@ -27,42 +27,13 @@ Built with **React + Vite**, styled with **Tailwind CSS**, and powered by **Verc
 
 ## 🚀 Live Demo
 
-> 🌍 Coming soon — Deployed with [Vercel](https://vercel.com/).  
-Check back here once live deployment is linked.
+> 🌍 Deployed with [Vercel](https://blogly-seven.vercel.app/).  
 
 ---
 
-## 📸 Screenshots
+## 📸 Screenshot
 
-> *(Add screenshots of homepage, blog post page, and dashboard here)*  
-
-Example:
-- **Landing Page with Featured Blogs**  
-- **Create Blog Editor**  
-- **Admin Dashboard with Analytics**
-
----
-
-## 🗂️ Project Structure
-
-```
-
-Blogly/
-├── api/                    # Vercel serverless API
-│   ├── auth.js             # Authentication endpoints
-│   ├── blogs.js            # Blog CRUD & interactions
-│   ├── contact.js          # Contact form handling
-│   ├── admin/              # Admin dashboard endpoints
-│   ├── user/               # User dashboard endpoints
-│   └── lib/                # DB & email helpers
-├── src/                    # React frontend
-│   ├── components/         # Reusable UI components
-│   ├── pages/              # Page components
-│   ├── context/            # Global context (auth, etc.)
-│   └── lib/                # Frontend utilities
-└── public/                 # Static assets
-
-````
+![Main Page](blog 1.png)
 
 ---
 
@@ -112,28 +83,6 @@ npm run dev
 
 ```
 http://localhost:5173
-```
-
----
-
-## 🌐 Deployment Guide
-
-### Environment Variables
-
-Set these in `.env` (local) or Vercel dashboard (production):
-
-```
-DATABASE_URL=your_postgres_connection_string
-GMAIL_USER=your_gmail@gmail.com
-GMAIL_PASS=your_gmail_app_password
-```
-
-### Deploy with Vercel
-
-```bash
-npm install -g vercel
-vercel
-vercel --prod
 ```
 
 ---
