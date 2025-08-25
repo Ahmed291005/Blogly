@@ -1,4 +1,3 @@
-```markdown
 # ✍️ Blogly - Full-Stack Blog Platform
 
 ![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)
@@ -173,5 +172,3 @@ Made with ❤️ by **Muhammad Ahmed**
 💻 [GitHub](https://github.com/Ahmed291005)
 
 ---
-👉 Do you want me to also design **badges for “Blogs created, users registered”** (custom shields.io badges) so your repo shows dynamic stats like a real SaaS project?
-```
